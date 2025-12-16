@@ -184,37 +184,91 @@ elif st.session_state.step == 4:
 
 # -----------------------------
 # STEP 5: 장르 성향
+
 # -----------------------------
 elif st.session_state.step == 5:
     st.header("세부 관심 장르를 선택해주세요")
 
-    # 🔥 위에서 고른 KDC 인덱스
+    # 세션에 selected_genres 없으면 생성
+    if "selected_genres" not in st.session_state:
+        st.session_state.selected_genres = set()
+
+    # 선택한 KDC 인덱스
     selected_kdc_indices = st.session_state.user["kdc"].keys()
 
-    # 🔥 세부 장르 합치기
+    # 세부 장르 합치기
     detail_genres = []
     for idx in selected_kdc_indices:
         detail_genres.extend(genres[idx])
 
-    # 중복 제거 (혹시 몰라서)
+    # 중복 제거
     detail_genres = list(set(detail_genres))
 
-    selected = []
+    # 🎨 전역 CSS 스타일 적용
+    st.markdown("""
+    <style>
+    div.stButton > button {
+        width: 100%;
+        border-radius: 8px;
+        height: 50px;
+        transition: all 0.3s;
+    }
+    div.stButton > button:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
     cols = st.columns(2)
 
     for i, genre_name in enumerate(detail_genres):
-        if cols[i % 2].button(genre_name):
-            selected.append(genre_name)
-            print(selected)
+        col = cols[i % 2]
 
-    if st.button("완료"):
-        if selected:
-            weight = 1 / len(selected)
+        is_selected = genre_name in st.session_state.selected_genres
+
+        # 선택 상태에 따라 버튼 타입과 라벨 변경
+        if is_selected:
+            button_label = f"✅ {genre_name}"
+            button_type = "primary"  # 선택된 상태
+        else:
+            button_label = genre_name
+            button_type = "secondary"  # 기본 상태
+
+        if col.button(
+                button_label,
+                key=f"genre_{i}_{genre_name}",
+                type=button_type,
+                use_container_width=True
+        ):
+            if is_selected:
+                st.session_state.selected_genres.remove(genre_name)
+            else:
+                st.session_state.selected_genres.add(genre_name)
+            st.rerun()  # 상태 변경 후 즉시 리렌더링
+
+    st.write("")  # 간격 추가
+
+    # 선택된 장르 표시 (선택사항)
+    if st.session_state.selected_genres:
+        st.info(
+            f"선택됨 ({len(st.session_state.selected_genres)}개): {', '.join(sorted(st.session_state.selected_genres))}")
+
+    if st.button("완료", type="primary", use_container_width=True):
+        if st.session_state.selected_genres:
+            weight = 1 / len(st.session_state.selected_genres)
             st.session_state.user["genre"] = {
-                g: weight for g in selected
+                g: weight for g in st.session_state.selected_genres
             }
+
+            # 정리
+            del st.session_state.selected_genres
+
             st.session_state.step = 6
             st.rerun()
+        else:
+            st.warning("최소 1개 이상의 장르를 선택해주세요!")
+
 
 
 # -----------------------------
