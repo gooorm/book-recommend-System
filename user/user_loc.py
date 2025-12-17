@@ -1,88 +1,21 @@
 import streamlit as st
-import streamlit.components.v1 as components
+from streamlit_geolocation import streamlit_geolocation
 
 
-# 방법 1: JavaScript Geolocation API (수정됨!)
+# 방법 1: streamlit-geolocation 라이브러리 사용 (안정적!)
 def get_user_location():
-    """JavaScript로 사용자 위치 받기 - 수정된 버전"""
-
-    location_html = """
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <meta charset="utf-8">
-    </head>
-    <body>
-        <div id="status" style="text-align:center; padding:20px; color:#666;">
-            📍 위치 정보를 가져오는 중...
-        </div>
-
-        <script>
-        function setStreamlitValue(value) {
-            window.parent.postMessage({
-                type: 'streamlit:setComponentValue',
-                value: value
-            }, '*');
-        }
-
-        function getLocation() {
-            const statusDiv = document.getElementById('status');
-
-            if (!navigator.geolocation) {
-                const error = {error: '이 브라우저는 위치 서비스를 지원하지 않습니다.'};
-                setStreamlitValue(error);
-                statusDiv.innerHTML = '❌ ' + error.error;
-                return;
-            }
-
-            navigator.geolocation.getCurrentPosition(
-                function(position) {
-                    const data = {
-                        latitude: position.coords.latitude,
-                        longitude: position.coords.longitude,
-                        accuracy: position.coords.accuracy,
-                        timestamp: new Date().toISOString()
-                    };
-                    setStreamlitValue(data);
-                    statusDiv.innerHTML = '✅ 위치 정보를 받았습니다!';
-                    
-                },
-                function(error) {
-                    let errorMsg = '';
-                    switch(error.code) {
-                        case 1:
-                            errorMsg = '위치 권한이 거부되었습니다.';
-                            break;
-                        case 2:
-                            errorMsg = '위치 정보를 사용할 수 없습니다.';
-                            break;
-                        case 3:
-                            errorMsg = '위치 요청 시간이 초과되었습니다.';
-                            break;
-                        default:
-                            errorMsg = '알 수 없는 오류가 발생했습니다.';
-                    }
-                    const errorData = {error: errorMsg};
-                    setStreamlitValue(errorData);
-                    statusDiv.innerHTML = '❌ ' + errorMsg;
-                },
-                {
-                    enableHighAccuracy: true,
-                    timeout: 10000,
-                    maximumAge: 0
-                }
-            );
-        }
-
-        // 페이지 로드 시 자동 실행
-        getLocation();
-        </script>
-    </body>
-    </html>
-    """
-
-    # key를 사용하여 컴포넌트 값 받기
-    return components.html(location_html, height=100)
+    """streamlit-geolocation을 사용하여 사용자 위치 받기"""
+    location = streamlit_geolocation()
+    
+    if location is None:
+        return None
+    
+    return {
+        'latitude': location.get('latitude'),
+        'longitude': location.get('longitude'),
+        'accuracy': location.get('accuracy', 0),
+        'timestamp': location.get('timestamp', '')
+    }
 
 
 # 방법 2: IP 기반 위치 (가장 안정적!)
