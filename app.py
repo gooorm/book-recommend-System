@@ -1,5 +1,5 @@
 import streamlit as st
-
+import user.data as data
 from user.user_vector import genre_vector
 
 # -----------------------------
@@ -14,19 +14,10 @@ if "user" not in st.session_state:
 # -----------------------------
 # KDC 대분류
 # -----------------------------
-KDC_MAIN = {
-    "000 총류": 0,
-    "100 철학": 1,
-    "200 종교": 2,
-    "300 사회과학": 3,
-    "400 자연과학": 4,
-    "500 기술과학": 5,
-    "600 예술": 6,
-    "700 언어": 7,
-    "800 문학": 8,
-    "900 역사": 9
-}
-genres = {
+KDC = data.KDC
+KDC_REVERSE = {v: k for k, v in KDC.items()}
+genres = data.DTL_KDC
+dtl = {
     0: [
         "도서학", "서지학", "문헌정보학", "백과사전",
         "강연집·수필집·연설문집",
@@ -156,12 +147,13 @@ elif st.session_state.step == 3:
 # -----------------------------
 # STEP 4: 선호 KDC (다중 선택)
 # -----------------------------
+
 elif st.session_state.step == 4:
     st.header("관심 있는 분야를 선택해주세요 (최대 2개)")
 
     selected = st.multiselect(
         "KDC 대분류",
-        list(KDC_MAIN.keys()),
+        list(KDC.values()),   # 👈 보여주는 건 한글
         max_selections=2
     )
 
@@ -169,11 +161,12 @@ elif st.session_state.step == 4:
         if selected:
             weight = 1 / len(selected)
 
-            # 🔥 KDC 인덱스 추출
+            # ✅ 한글 → KDC 코드 변환
             selected_indices = [
-                KDC_MAIN[k] for k in selected
+                KDC_REVERSE[name] for name in selected
             ]
 
+            # ✅ {"0": 0.5, "3": 0.5} 이런 형태
             st.session_state.user["kdc"] = {
                 idx: weight for idx in selected_indices
             }
@@ -199,7 +192,11 @@ elif st.session_state.step == 5:
     # 세부 장르 합치기
     detail_genres = []
     for idx in selected_kdc_indices:
-        detail_genres.extend(genres[idx])
+        base = int(idx) * 10  # 0 → 0, 1 → 10
+        for i in range(1, 10):
+            code = f"{base + i:02d}"  # 01~09, 11~19
+            detail_genres.extend([genres[code]])
+
 
     # 중복 제거
     detail_genres = list(set(detail_genres))
