@@ -1,6 +1,7 @@
 import streamlit as st
 from streamlit_geolocation import streamlit_geolocation
-
+import requests
+import data
 
 # 방법 1: streamlit-geolocation 라이브러리 사용 (안정적!)
 def get_user_location():
@@ -16,7 +17,20 @@ def get_user_location():
         'accuracy': location.get('accuracy', 0),
         'timestamp': location.get('timestamp', '')
     }
+def get_address_name(lat, lon, api_key):
+    url = "https://dapi.kakao.com/v2/local/geo/coord2regioncode.json"
+    params = {"x": lon, "y": lat}
+    headers = {"Authorization": f"KakaoAK {api_key}"}
 
+    res = requests.get(url, params=params, headers=headers)
+    res.raise_for_status()
+
+    docs = res.json().get("documents", [])
+    for doc in docs:
+        if doc["region_type"] == "H":
+            return doc["address_name"]
+
+    return None
 
 # 방법 2: IP 기반 위치 (가장 안정적!)
 def get_location_from_ip():
@@ -42,29 +56,6 @@ def get_location_from_ip():
         return None
 
 
-# 역지오코딩: 좌표 → 주소
-def get_address_from_coords(lat, lon):
-    """좌표를 주소로 변환"""
-    import requests
-
-    # Nominatim (무료, OpenStreetMap)
-    url = f"https://nominatim.openstreetmap.org/reverse"
-    params = {
-        'format': 'json',
-        'lat': lat,
-        'lon': lon,
-        'zoom': 18,
-        'addressdetails': 1
-    }
-    headers = {'User-Agent': 'StreamlitApp/1.0'}
-
-    try:
-        response = requests.get(url, params=params, headers=headers, timeout=5)
-        return response.json()
-    except Exception as e:
-        st.error(f"주소 변환 실패: {e}")
-        return None
-
 
 # ============================================
 # 메인 앱
@@ -85,7 +76,6 @@ with tab1:
     # 버튼으로 제어
     if st.button("📍 내 정확한 위치 가져오기", key="js_btn"):
         st.session_state.js_location_requested = True
-
     # 위치 요청이 있을 때만 컴포넌트 실행
     if st.session_state.get('js_location_requested', False):
 
@@ -98,7 +88,7 @@ with tab1:
                     st.error(f"❌ {location_data['error']}")
                     st.info("💡 팁: 브라우저 주소창 왼쪽의 자물쇠 아이콘을 클릭하여 위치 권한을 확인해보세요.")
                 else:
-                    st.success("✅ 위치 정보를 성공적으로 받았습니다!")
+                    #st.success("✅ 위치 정보를 성공적으로 받았습니다!")
 
                     if location_data["latitude"] is not None and location_data["longitude"] is not None:
                         col1, col2 = st.columns(2)
@@ -109,16 +99,13 @@ with tab1:
                     else:
                         st.metric("주소를 찾을 수 없습니다.")
 
-                    st.info(f"📏 정확도: ±{location_data['accuracy']:.1f}m")
-
                     # 세션에 저장
                     st.session_state.user_location = location_data
                     st.session_state.user_location['method'] = 'javascript'
 
                     # 초기화
                     st.session_state.js_location_requested = False
-    else:
-        st.info("⚠️ 브라우저에서 위치 권한을 허용해주세요!")
+
 
 
 # ============================================
@@ -170,36 +157,14 @@ if 'user_location' in st.session_state:
 
     if st.button("🔄 주소로 변환"):
         with st.spinner("주소 변환 중..."):
-            address_data = get_address_from_coords(
-                loc['latitude'],
-                loc['longitude']
-            )
+            address_data = get_address_name(loc['latitude'], loc['longitude'], data.rest_api)
 
         if address_data:
             st.success("✅ 주소 변환 완료!")
 
             # 전체 주소
             st.write(f"**📍 전체 주소**")
-            st.info(address_data.get('display_name', 'N/A'))
-
-            # 상세 주소
-            addr = address_data.get('address', {})
-
-            st.write("**🏘️ 상세 주소**")
-            col1, col2 = st.columns(2)
-            with col1:
-                st.write(f"- **국가**: {addr.get('country', 'N/A')}")
-                st.write(f"- **도/주**: {addr.get('state', 'N/A')}")
-                st.write(f"- **시/군**: {addr.get('city', addr.get('town', addr.get('county', 'N/A')))}")
-            with col2:
-                st.write(f"- **구/동**: {addr.get('suburb', addr.get('neighbourhood', 'N/A'))}")
-                st.write(f"- **도로명**: {addr.get('road', 'N/A')}")
-                st.write(f"- **우편번호**: {addr.get('postcode', 'N/A')}")
-
-            # 지도 링크
-            st.write("**🗺️ 지도에서 보기**")
-            map_url = f"https://www.google.com/maps?q={loc['latitude']},{loc['longitude']}"
-            st.markdown(f"[Google Maps에서 열기]({map_url})")
+            st.info(address_data)
 
 # ============================================
 # 디버깅 정보

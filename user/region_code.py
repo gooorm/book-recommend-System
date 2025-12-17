@@ -6,7 +6,7 @@ KAKAO_REST_API_KEY = "YOUR_KAKAO_KEY"  # 환경변수나 st.secrets로 관리 �
 
 # 1. 정보나루 지역코드 매핑 (샘플만, 매뉴얼 지역 코드 표에서 필요한 것 더 추가)
 #   region: 광역 수준, dtl_region: 시군구 수준
-REGION_CODE_MAP = data.REGION_CODE_MAP
+REGION_CODE_MAP = data.REGION
 
 DTL_REGION_CODE_MAP = data.DTL_REGION
 
