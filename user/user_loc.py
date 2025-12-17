@@ -1,7 +1,7 @@
 import streamlit as st
 from streamlit_geolocation import streamlit_geolocation
 import requests
-import data
+from user import data
 
 # 방법 1: streamlit-geolocation 라이브러리 사용 (안정적!)
 def get_user_location():
@@ -61,87 +61,86 @@ def get_location_from_ip():
 # 메인 앱
 # ============================================
 
-st.set_page_config(page_title="사용자 위치 받기", page_icon="📍")
+#st.set_page_config(page_title="사용자 위치 받기", page_icon="📍")
 
-st.title("📍 사용자 위치 받기")
+#st.title("📍 사용자 위치 받기")
 
 # 탭으로 구분
-tab1, tab2 = st.tabs(["🎯 JavaScript (정확)", "🌐 IP 기반 (간단)"])
+#tab1, tab2 = st.tabs(["🎯 JavaScript (정확)", "🌐 IP 기반 (간단)"])
 
 # ============================================
 # 탭 1: JavaScript Geolocation
 # ============================================
-with tab1:
-
-    # 버튼으로 제어
-    if st.button("📍 내 정확한 위치 가져오기", key="js_btn"):
-        st.session_state.js_location_requested = True
-    # 위치 요청이 있을 때만 컴포넌트 실행
-    if st.session_state.get('js_location_requested', False):
-
+def getLocation():
+    # st.info("📌 브라우저 위치 권한이 필요합니다.")
+    with st.spinner("브라우저에서 위치 권한 요청 중..."):
         location_data = get_user_location()
 
-        # 컴포넌트가 값을 반환할 때까지 대기
-        if location_data is not None:
-            if isinstance(location_data, dict):
-                if 'error' in location_data:
-                    st.error(f"❌ {location_data['error']}")
-                    st.info("💡 팁: 브라우저 주소창 왼쪽의 자물쇠 아이콘을 클릭하여 위치 권한을 확인해보세요.")
-                else:
-                    #st.success("✅ 위치 정보를 성공적으로 받았습니다!")
+    if location_data is None:
+        print("❌ 위치 정보를 받을 수 없습니다. 브라우저 권한을 확인하세요.")
+    elif isinstance(location_data, dict) and 'error' in location_data:
+        print(f"❌ {location_data['error']}")
+        print("⚠️ 위도/경도 정보를 받지 못했습니다.")
+        print("💡 팁: 브라우저 주소창 왼쪽의 자물쇠 아이콘을 클릭하여 위치 권한을 확인해보세요.")
+    elif location_data.get('latitude') is not None and location_data.get('longitude') is not None:
+        print("✅ 위치 정보를 성공적으로 받았습니다!")
+        col1, col2 = st.columns(2)
 
-                    if location_data["latitude"] is not None and location_data["longitude"] is not None:
-                        col1, col2 = st.columns(2)
-                        with col1:
-                            st.metric("위도", f"{location_data['latitude']:.6f}")
-                        with col2:
-                            st.metric("경도", f"{location_data['longitude']:.6f}")
-                    else:
-                        st.metric("주소를 찾을 수 없습니다.")
+        with col1:
+            st.metric("위도", f"{location_data['latitude']:.6f}")
+        with col2:
+            st.metric("경도", f"{location_data['longitude']:.6f}")
 
-                    # 세션에 저장
-                    st.session_state.user_location = location_data
-                    st.session_state.user_location['method'] = 'javascript'
+        # 세션에 저장
+        st.session_state.user_location = location_data
+        st.session_state.user_location['method'] = 'javascript'
 
-                    # 초기화
-                    st.session_state.js_location_requested = False
+        with st.spinner("주소 변환 중..."):
+            address_data = get_address_name(location_data['latitude'], location_data['longitude'], data.rest_api)
 
+        if address_data:
+            print("✅ 주소 변환 완료!")
 
+            # 전체 주소
+            st.info(address_data)
+            return address_data
 
+# with tab1:
+#     getLocation()
 # ============================================
 # 탭 2: IP 기반
 # ============================================
-with tab2:
-    st.info("📌 권한 없이 대략적인 위치를 확인할 수 있습니다.")
-
-    if st.button("🌐 IP로 위치 확인", key="ip_btn"):
-        with st.spinner("위치 확인 중..."):
-            location = get_location_from_ip()
-
-        if location:
-            st.success("✅ 대략적인 위치를 확인했습니다!")
-
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                st.metric("도시", location['city'] or 'N/A')
-            with col2:
-                st.metric("지역", location['region'] or 'N/A')
-            with col3:
-                st.metric("국가", location['country'] or 'N/A')
-
-            if location['latitude'] is not None and location['longitude'] is not None:
-                col1, col2 = st.columns(2)
-                with col1:
-                    st.metric("위도", f"{location['latitude']:.6f}")
-                with col2:
-                    st.metric("경도", f"{location['longitude']:.6f}")
-            else:
-                st.warning("⚠️ 위도/경도 정보를 받지 못했습니다.")
-
-            st.warning(f"⚠️ {location['accuracy']}")
-
-            # 세션에 저장
-            st.session_state.user_location = location
+# with tab2:
+#     st.info("📌 권한 없이 대략적인 위치를 확인할 수 있습니다.")
+#
+#     if st.button("🌐 IP로 위치 확인", key="ip_btn"):
+#         with st.spinner("위치 확인 중..."):
+#             location = get_location_from_ip()
+#
+#         if location:
+#             st.success("✅ 대략적인 위치를 확인했습니다!")
+#
+#             col1, col2, col3 = st.columns(3)
+#             with col1:
+#                 st.metric("도시", location['city'] or 'N/A')
+#             with col2:
+#                 st.metric("지역", location['region'] or 'N/A')
+#             with col3:
+#                 st.metric("국가", location['country'] or 'N/A')
+#
+#             if location['latitude'] is not None and location['longitude'] is not None:
+#                 col1, col2 = st.columns(2)
+#                 with col1:
+#                     st.metric("위도", f"{location['latitude']:.6f}")
+#                 with col2:
+#                     st.metric("경도", f"{location['longitude']:.6f}")
+#             else:
+#                 st.warning("⚠️ 위도/경도 정보를 받지 못했습니다.")
+#
+#             st.warning(f"⚠️ {location['accuracy']}")
+#
+#             # 세션에 저장
+#             st.session_state.user_location = location
 
 # ============================================
 # 역지오코딩
@@ -169,5 +168,5 @@ if 'user_location' in st.session_state:
 # ============================================
 # 디버깅 정보
 # ============================================
-with st.expander("🔧 세션 상태 (디버깅용)"):
-    st.json(st.session_state.to_dict())
+# with st.expander("🔧 세션 상태 (디버깅용)"):
+#     st.json(st.session_state.to_dict())

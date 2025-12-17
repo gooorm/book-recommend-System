@@ -1,5 +1,6 @@
 import streamlit as st
 import user.data as data
+from user.user_loc import getLocation
 from user.user_vector import genre_vector
 
 # -----------------------------
@@ -284,3 +285,4 @@ elif st.session_state.step == 6:
     - 성별 대출 비율  
     과 매칭되어 추천 점수에 사용됩니다.
     """)
+    st.write(getLocation())
