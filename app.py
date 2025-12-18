@@ -1,13 +1,16 @@
 import streamlit as st
 import requests
-from user.user_loc import getLocation
+
+from user.data import DTL_REGION
+from user.user_loc import getLocation, get_address_name
 from user.user_vector import genre_vector
 from datetime import datetime, timedelta
 import json
-from config import NARU_API_KEY
+from config import NARU_API_KEY, KAKAO_REST_API_KEY
 import os
 import user.data as code_data
-print("CONFIG KEY:", repr(NARU_API_KEY))
+from user.map import astar_find_nearest_library
+
 # -----------------------------
 # 초기 세션 상태
 # -----------------------------
@@ -16,12 +19,16 @@ if "step" not in st.session_state:
 
 if "user" not in st.session_state:
     st.session_state.user = {}
-
+if st.button("처음으로"):
+    st.session_state.clear()
+    st.rerun()
 # -----------------------------
 # KDC 대분류
 # -----------------------------
 KDC = code_data.KDC
 KDC_REVERSE = {v: k for k, v in KDC.items()}
+REGION_REVERSE = {v: k for k, v in code_data.REGION.items()}
+DTL_REGION_REVERSE = {v: k for k, v in code_data.DTL_REGION.items()}
 genres = code_data.DTL_KDC
 
 # ---------------------------
@@ -93,6 +100,7 @@ def display_book_card(book, location):
     # 도서 정보 추출
     book_info = book.get("doc", {})
 
+
     bookname = book_info.get("bookname", "제목 없음")
     authors = book_info.get("authors", "저자 미상")
     publisher = book_info.get("publisher", "출판사 미상")
@@ -131,29 +139,91 @@ def display_book_card(book, location):
                     "bookname": bookname,
                     "location": location
                 }
+                st.switch_page("pages/a_star.py")
                 st.rerun()
+
             else:
                 st.error("위치 정보를 가져올 수 없습니다.")
 
     st.divider()
 
 
-def search_nearby_libraries(isbn, location):
+def search_nearby_libraries(isbn, user_location, region, dtl_region):
     """
     가까운 도서관에서 해당 도서 소장 여부 검색
-    (실제 구현시 도서관 정보나눔 API 사용)
+
+    Args:
+        isbn: ISBN 번호
+        user_location: 사용자 위치 {'latitude': float, 'longitude': float}
+        region: 지역 코드
+        dtl_region: 세부 지역 코드
+
+    Returns:
+        list: 도서관 정보 리스트
     """
-    # TODO: 실제 도서관 API 연동
-    # http://data4library.kr/api/libSrch (도서관 검색)
-    # http://data4library.kr/api/bookExist (소장 도서 검색)
 
-    st.info(f"""
-    📍 현재 위치: 위도 {location['latitude']}, 경도 {location['longitude']}
+    # API URL
+    base_url = "http://data4library.kr/api/libSrchByBook"
 
-    ISBN: {isbn}
 
-    (가까운 도서관 API 연동 예정)
-    """)
+    params = {
+        "authKey": NARU_API_KEY,
+        "isbn": isbn,
+        "region": region,
+        "format": "json",
+        "dtl_region": dtl_region
+    }
+
+    try:
+        # API 요청
+        response = requests.get(base_url, params=params, timeout=10)
+        response.raise_for_status()
+
+        data = response.json()
+
+        # 응답 데이터 파싱
+        if "response" in data and "libs" in data["response"]:
+            libraries_raw = data["response"]["libs"]
+
+            # 도서관 목록이 없는 경우
+            if not libraries_raw:
+                return [], "해당 지역에 이 도서를 소장한 도서관이 없습니다."
+
+            # 도서관 정보 추출
+            libraries = []
+            for lib_data in libraries_raw:
+                lib = lib_data.get("lib", {})
+
+                libraries.append({
+                    "libCode": lib.get("libCode", ""),
+                    "libName": lib.get("libName", "정보 없음"),
+                    "address": lib.get("address", "정보 없음"),
+                    "tel": lib.get("tel", "정보 없음"),
+                    "latitude": lib.get("latitude", 0),
+                    "longitude": lib.get("longitude", 0),
+                    "homepage": lib.get("homepage", ""),
+                    "closed": lib.get("closed", "정보 없음"),
+                    "operatingTime": lib.get("operatingTime", "정보 없음")
+                })
+
+            # A* 알고리즘으로 거리 계산 및 정렬
+            sorted_libraries = astar_find_nearest_library(user_location, libraries)
+
+            return sorted_libraries, None
+
+        else:
+            return [], "응답 데이터 형식이 올바르지 않습니다."
+
+    except requests.exceptions.Timeout:
+        return [], "API 요청 시간 초과"
+    except requests.exceptions.RequestException as e:
+        return [], f"API 요청 실패: {str(e)}"
+    except Exception as e:
+        return [], f"예상치 못한 오류: {str(e)}"
+
+
+
+
 # -----------------------------
 # STEP 1: 이름
 # -----------------------------
@@ -347,21 +417,21 @@ elif st.session_state.step == 5:
 elif st.session_state.step == 6:
     st.success("설문 완료! 🎉")
 
-    # 사용자 선호 벡터 표시
-    # with st.expander("📊 사용자 선호 벡터 보기"):
-    #     st.json(st.session_state.user)
-    #
-    #     st.markdown("""
-    #         ✅ 이 벡터가 이후
-    #         - 도서 KDC
-    #         - 연령대 통계
-    #         - 성별 대출 비율
-    #         과 매칭되어 추천 점수에 사용됩니다.
-    #         """)
-
     # 위치 정보 가져오기
     location = getLocation()
 
+    if location:
+        address = get_address_name(
+            location["latitude"],
+            location["longitude"],
+            KAKAO_REST_API_KEY
+        )
+        addr1, addr2, addr3 = address.split()
+        st.session_state.user["lat"] = location["latitude"]
+        st.session_state.user["lng"] = location["longitude"]
+        st.session_state.user["region"] = addr1
+        st.session_state.user["dtl_region"] = addr1+" "+ addr2
+        #st.write(st.session_state.user["dtl_region"])
     st.divider()
     st.header("📚 맞춤 추천 도서")
 
@@ -412,20 +482,22 @@ elif st.session_state.step == 6:
         if len(books) > show_count:
             st.info(f"📖 {len(books) - show_count}권의 도서가 더 있습니다.")
 
-    # 선택된 도서가 있는 경우 도서관 검색
+#    선택된 도서가 있는 경우 도서관 검색
     if "selected_book" in st.session_state:
-        st.divider()
-        st.header("🏛️ 가까운 도서관")
+        # st.divider()
+        # st.header("🏛️ 가까운 도서관")
 
         selected = st.session_state.selected_book
-        st.markdown(f"**선택한 도서**: {selected['bookname']}")
+        # st.markdown(f"**선택한 도서**: {selected['bookname']}")
 
-        search_nearby_libraries(
+        st.session_state.user["library"]=search_nearby_libraries(
             selected["isbn13"],
-            selected["location"]
+            selected["location"],
+            REGION_REVERSE[st.session_state.user["region"]],
+            DTL_REGION_REVERSE[st.session_state.user["dtl_region"]]
         )
-
         # 뒤로가기
+        #st.write(st.session_state.user["library"][0][0]["library"]["latitude"])
         if st.button("⬅️ 도서 목록으로"):
             del st.session_state.selected_book
             st.rerun()

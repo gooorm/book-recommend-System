@@ -1,9 +1,7 @@
 import streamlit as st
 from streamlit_geolocation import streamlit_geolocation
 import requests
-from config import KAKAO_REST_API_KEY
 
-print("CONFIG KEY:", repr(KAKAO_REST_API_KEY))
 # 방법 1: streamlit-geolocation 라이브러리 사용 (안정적!)
 def get_user_location():
     """streamlit-geolocation을 사용하여 사용자 위치 받기"""
@@ -18,10 +16,10 @@ def get_user_location():
         'accuracy': location.get('accuracy', 0),
         'timestamp': location.get('timestamp', '')
     }
-def get_address_name(lat, lon, api_key):
+def get_address_name(lat, lon, kakao_api_key):
     url = "https://dapi.kakao.com/v2/local/geo/coord2regioncode.json"
     params = {"x": lon, "y": lat}
-    headers = {"Authorization": f"KakaoAK {api_key}"}
+    headers = {"Authorization": f"KakaoAK {kakao_api_key}"}
 
     res = requests.get(url, params=params, headers=headers)
     res.raise_for_status()
@@ -74,40 +72,23 @@ def get_location_from_ip():
 # 탭 1: JavaScript Geolocation
 # ============================================
 def getLocation():
-    # st.info("📌 브라우저 위치 권한이 필요합니다.")
     with st.spinner("브라우저에서 위치 권한 요청 중..."):
         location_data = get_user_location()
 
-    if location_data is None:
-        print("❌ 위치 정보를 받을 수 없습니다. 브라우저 권한을 확인하세요.")
-    elif isinstance(location_data, dict) and 'error' in location_data:
-        print(f"❌ {location_data['error']}")
-        print("⚠️ 위도/경도 정보를 받지 못했습니다.")
-        print("💡 팁: 브라우저 주소창 왼쪽의 자물쇠 아이콘을 클릭하여 위치 권한을 확인해보세요.")
-    elif location_data.get('latitude') is not None and location_data.get('longitude') is not None:
-        print("✅ 위치 정보를 성공적으로 받았습니다!")
-        col1, col2 = st.columns(2)
+    if not location_data:
+        return None
 
-        with col1:
-            st.metric("위도", f"{location_data['latitude']:.6f}")
-        with col2:
-            st.metric("경도", f"{location_data['longitude']:.6f}")
+    if location_data.get('latitude') is None:
+        return None
 
-        # 세션에 저장
-        st.session_state.user_location = location_data
-        st.session_state.user_location['method'] = 'javascript'
+    # 세션 저장
+    st.session_state.user_location = location_data
+    st.session_state.user_location['method'] = 'javascript'
 
-
-        print("CONFIG KEY:", repr(KAKAO_REST_API_KEY))
-        with st.spinner("주소 변환 중..."):
-            address_data = get_address_name(location_data['latitude'], location_data['longitude'], KAKAO_REST_API_KEY)
-
-        if address_data:
-            print("✅ 주소 변환 완료!")
-
-            # 전체 주소
-            st.info(address_data)
-            return address_data
+    return {
+        "latitude": location_data["latitude"],
+        "longitude": location_data["longitude"]
+    }
 
 # with tab1:
 #     getLocation()
@@ -149,27 +130,25 @@ def getLocation():
 # ============================================
 # 역지오코딩
 # ============================================
-if 'user_location' in st.session_state:
-    st.divider()
-    st.subheader("🗺️ 역지오코딩 (좌표 → 주소)")
-
-    loc = st.session_state.user_location
-
-    st.write(f"**저장된 위치**: {loc.get('method', 'unknown')} 방식")
-    st.write(f"**좌표**: ({loc['latitude']:.6f}, {loc['longitude']:.6f})")
-
-    if st.button("🔄 주소로 변환"):
-        with st.spinner("주소 변환 중..."):
-
-
-            address_data = get_address_name(loc['latitude'], loc['longitude'], KAKAO_REST_API_KEY)
-
-        if address_data:
-            st.success("✅ 주소 변환 완료!")
-
-            # 전체 주소
-            st.write(f"**📍 전체 주소**")
-            st.info(address_data)
+# if 'user_location' in st.session_state:
+#     st.divider()
+#     st.subheader("🗺️ 역지오코딩 (좌표 → 주소)")
+#
+#     loc = st.session_state.user_location
+#
+#     st.write(f"**저장된 위치**: {loc.get('method', 'unknown')} 방식")
+#     st.write(f"**좌표**: ({loc['latitude']:.6f}, {loc['longitude']:.6f})")
+#
+#     if st.button("🔄 주소로 변환"):
+#         with st.spinner("주소 변환 중..."):
+#             address_data = get_address_name(loc['latitude'], loc['longitude'], KAKAO_REST_API_KEY)
+#
+#         if address_data:
+#             st.success("✅ 주소 변환 완료!")
+#
+#             # 전체 주소
+#             st.write(f"**📍 전체 주소**")
+#             st.info(address_data)
 
 # ============================================
 # 디버깅 정보
