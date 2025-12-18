@@ -1,8 +1,13 @@
 import streamlit as st
-import user.data as data
+import requests
 from user.user_loc import getLocation
 from user.user_vector import genre_vector
-
+from datetime import datetime, timedelta
+import json
+from config import NARU_API_KEY
+import os
+import user.data as code_data
+print("CONFIG KEY:", repr(NARU_API_KEY))
 # -----------------------------
 # 초기 세션 상태
 # -----------------------------
@@ -15,76 +20,140 @@ if "user" not in st.session_state:
 # -----------------------------
 # KDC 대분류
 # -----------------------------
-KDC = data.KDC
+KDC = code_data.KDC
 KDC_REVERSE = {v: k for k, v in KDC.items()}
-genres = data.DTL_KDC
-dtl = {
-    0: [
-        "도서학", "서지학", "문헌정보학", "백과사전",
-        "강연집·수필집·연설문집",
-        "일반연속간행물", "학회·단체·연구기관",
-        "신문", "저널리즘", "전집", "총서", "향토자료"
-    ],
-    1: [
-        "형이상학", "인식론·인과론·인간학",
-        "철학의 체계", "경학",
-        "동양철학·동양사상",
-        "서양철학", "논리학",
-        "심리학", "윤리학·도덕철학"
-    ],
-    2: [
-        "비교종교", "불교", "기독교", "도교",
-        "천도교", "힌두교·브라만교",
-        "이슬람교", "기타 종교"
-    ],
-    3: [
-        "통계자료", "경제학", "사회학", "사회문제",
-        "정치학", "행정학", "법률·법학",
-        "교육학", "풍습·예절·민속학",
-        "국방·군사학"
-    ],
-    4: [
-        "수학", "물리학", "화학", "천문학",
-        "지학", "광물학", "생명과학",
-        "식물학", "동물학"
-    ],
-    5: [
-        "의학", "농업·농학",
-        "공학", "공업일반", "토목공학", "환경공학",
-        "건축·건축학", "기계공학",
-        "전기공학", "전자공학", "통신공학",
-        "화학공학", "제조업", "생활과학"
-    ],
-    6: [
-        "조각", "조형미술", "공예",
-        "서예", "회화", "도화", "디자인",
-        "사진예술", "음악",
-        "공연예술", "매체예술",
-        "오락", "스포츠"
-    ],
-    7: [
-        "한국어", "중국어", "일본어",
-        "아시아 제어", "영어",
-        "독일어", "프랑스어",
-        "스페인어", "포르투갈어",
-        "이탈리아어", "기타 제어"
-    ],
-    8: [
-        "한국문학", "중국문학", "일본문학",
-        "아시아 제문학",
-        "영미문학", "독일문학",
-        "프랑스문학",
-        "스페인·포르투갈 문학",
-        "이탈리아 문학", "기타 문학"
-    ],
-    9: [
-        "아시아사", "유럽사", "아프리카사",
-        "북아메리카사", "남아메리카사",
-        "오세아니아사", "지리",
-        "전기"
-    ]
-}
+genres = code_data.DTL_KDC
 
+# ---------------------------
+# 도서 조회 함수
+# ---------------------------
+def get_popular_books(user_prefs):
+    """
+    사용자 선호도를 기반으로 인기 도서 조회
+    """
+    # API URL
+    base_url = "http://data4library.kr/api/loanItemSrch"
+
+    # 날짜 설정 (최근 1개월)
+    end_date = datetime.now()
+    start_date = end_date - timedelta(days=30)
+
+    # 파라미터 구성
+    params = {
+        "authKey": NARU_API_KEY,
+        "format": "json",
+        "pageNo": 1,
+        "pageSize": 20,  # 한 번에 가져올 도서 수
+    }
+
+    # 사용자 선호도 추가
+    if "gender" in user_prefs and user_prefs["gender"]:
+        params["gender"] = user_prefs["gender"]
+
+    if "age" in user_prefs and user_prefs["age"]:
+        params["age"] = user_prefs["age"]
+
+    if "kdc" in user_prefs and user_prefs["kdc"]:
+        params["kdc"] = user_prefs["kdc"]
+
+    if "dtl_kdc" in user_prefs and user_prefs["dtl_kdc"]:
+        params["dtl_kdc"] = user_prefs["dtl_kdc"]
+
+    # 날짜 추가
+    params["startDt"] = start_date.strftime("%Y-%m-%d")
+    params["endDt"] = end_date.strftime("%Y-%m-%d")
+
+    try:
+        # API 요청
+        response = requests.get(base_url, params=params, timeout=10)
+        response.raise_for_status()
+
+        # JSON 파싱
+        data = response.json()
+
+        # 응답 데이터 확인
+        if "response" in data and "docs" in data["response"]:
+            books = data["response"]["docs"]
+            return books, None
+        else:
+            return [], "응답 데이터 형식이 올바르지 않습니다."
+
+    except requests.exceptions.Timeout:
+        return [], "API 요청 시간 초과"
+    except requests.exceptions.RequestException as e:
+        return [], f"API 요청 실패: {str(e)}"
+    except json.JSONDecodeError:
+        return [], "응답 데이터 파싱 실패"
+
+
+def display_book_card(book, location):
+    """
+    도서 정보를 카드 형태로 표시
+    """
+    # 도서 정보 추출
+    book_info = book.get("doc", {})
+
+    bookname = book_info.get("bookname", "제목 없음")
+    authors = book_info.get("authors", "저자 미상")
+    publisher = book_info.get("publisher", "출판사 미상")
+    publication_year = book_info.get("publication_year", "")
+    book_image_url = book_info.get("bookImageURL", "")
+    isbn13 = book_info.get("isbn13", "")
+    loan_count = book_info.get("loan_count", "0")
+    ranking = book_info.get("ranking", "")
+
+    # 카드 레이아웃
+    col1, col2 = st.columns([1, 3])
+
+    with col1:
+        # 책 표지 이미지
+        if book_image_url:
+            st.image(book_image_url, use_container_width=True)
+        else:
+            st.markdown("📚")
+
+    with col2:
+        # 도서 정보
+        st.markdown(f"### {bookname}")
+        st.markdown(f"**저자**: {authors}")
+        st.markdown(f"**출판사**: {publisher} ({publication_year})")
+
+        if ranking:
+            st.markdown(f"🏆 순위: {ranking}위 | 대출 {loan_count}회")
+        else:
+            st.markdown(f"📊 대출 {loan_count}회")
+
+        # 도서관 찾기 버튼
+        if st.button(f"가까운 도서관 찾기", key=f"btn_{isbn13}"):
+            if location:
+                st.session_state.selected_book = {
+                    "isbn13": isbn13,
+                    "bookname": bookname,
+                    "location": location
+                }
+                st.rerun()
+            else:
+                st.error("위치 정보를 가져올 수 없습니다.")
+
+    st.divider()
+
+
+def search_nearby_libraries(isbn, location):
+    """
+    가까운 도서관에서 해당 도서 소장 여부 검색
+    (실제 구현시 도서관 정보나눔 API 사용)
+    """
+    # TODO: 실제 도서관 API 연동
+    # http://data4library.kr/api/libSrch (도서관 검색)
+    # http://data4library.kr/api/bookExist (소장 도서 검색)
+
+    st.info(f"""
+    📍 현재 위치: 위도 {location['latitude']}, 경도 {location['longitude']}
+
+    ISBN: {isbn}
+
+    (가까운 도서관 API 연동 예정)
+    """)
 # -----------------------------
 # STEP 1: 이름
 # -----------------------------
@@ -107,17 +176,17 @@ elif st.session_state.step == 2:
     col1, col2, col3 = st.columns(3)
 
     if col1.button("👩 여성"):
-        st.session_state.user["gender"] = "F"
+        st.session_state.user["gender"] = "1"
         st.session_state.step = 3
         st.rerun()
 
     if col2.button("👨 남성"):
-        st.session_state.user["gender"] = "M"
+        st.session_state.user["gender"] = "2"
         st.session_state.step = 3
         st.rerun()
 
     if col3.button("❓ 선택 안 함"):
-        st.session_state.user["gender"] = "ANY"
+        st.session_state.user["gender"] = "2"
         st.session_state.step = 3
         st.rerun()
 
@@ -128,12 +197,15 @@ elif st.session_state.step == 3:
     st.header("연령대를 선택해주세요")
 
     age_groups = {
-        "10대": 15,
-        "20대": 25,
-        "30대": 35,
-        "40대": 45,
-        "50대": 55,
-        "60대 이상": 65
+        "영유아(0~5세)": '0',
+        "유아(6~7세)": '7',
+        "초등(8~13세)": '8',
+        "청소년": '14',
+        "20대": '20',
+        "30대": "30",
+        "40대": '40',
+        "50대": "50",
+        "60대 이상": "60"
     }
 
     cols = st.columns(3)
@@ -274,15 +346,102 @@ elif st.session_state.step == 5:
 # -----------------------------
 elif st.session_state.step == 6:
     st.success("설문 완료! 🎉")
-    st.subheader("사용자 선호 벡터")
 
-    st.json(st.session_state.user)
+    # 사용자 선호 벡터 표시
+    # with st.expander("📊 사용자 선호 벡터 보기"):
+    #     st.json(st.session_state.user)
+    #
+    #     st.markdown("""
+    #         ✅ 이 벡터가 이후
+    #         - 도서 KDC
+    #         - 연령대 통계
+    #         - 성별 대출 비율
+    #         과 매칭되어 추천 점수에 사용됩니다.
+    #         """)
 
-    st.markdown("""
-    ✅ 이 벡터가 이후  
-    - 도서 KDC  
-    - 연령대 통계  
-    - 성별 대출 비율  
-    과 매칭되어 추천 점수에 사용됩니다.
-    """)
-    st.write(getLocation())
+    # 위치 정보 가져오기
+    location = getLocation()
+
+    st.divider()
+    st.header("📚 맞춤 추천 도서")
+
+    # 도서 검색 중 표시
+    with st.spinner("당신을 위한 도서를 찾고 있습니다..."):
+        books, error = get_popular_books(st.session_state.user)
+
+    # 에러 처리
+    if error:
+        st.error(f"❌ 도서 조회 실패: {error}")
+        st.info("API 키를 확인하거나 나중에 다시 시도해주세요.")
+
+        # 재시도 버튼
+        if st.button("🔄 다시 시도"):
+            st.rerun()
+
+    # 도서가 없는 경우
+    elif not books:
+        st.warning("😢 조건에 맞는 도서를 찾지 못했습니다.")
+        st.info("다른 선호도를 선택해보시겠어요?")
+
+        if st.button("⬅️ 설문 다시하기"):
+            st.session_state.step = 1
+            st.rerun()
+
+    # 도서 표시
+    else:
+        st.success(f"✨ {len(books)}권의 추천 도서를 찾았습니다!")
+
+        # 필터 옵션
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            sort_by = st.selectbox("정렬", ["인기순", "최신순"], key="sort_books")
+        with col2:
+            show_count = st.slider("표시 개수", 5, 20, 10, key="show_count")
+        with col3:
+            st.write("")  # 공간 확보
+
+        st.divider()
+
+        # 도서 카드 표시
+        display_books = books[:show_count]
+
+        for idx, book in enumerate(display_books):
+            display_book_card(book, location)
+
+        # 더보기 버튼
+        if len(books) > show_count:
+            st.info(f"📖 {len(books) - show_count}권의 도서가 더 있습니다.")
+
+    # 선택된 도서가 있는 경우 도서관 검색
+    if "selected_book" in st.session_state:
+        st.divider()
+        st.header("🏛️ 가까운 도서관")
+
+        selected = st.session_state.selected_book
+        st.markdown(f"**선택한 도서**: {selected['bookname']}")
+
+        search_nearby_libraries(
+            selected["isbn13"],
+            selected["location"]
+        )
+
+        # 뒤로가기
+        if st.button("⬅️ 도서 목록으로"):
+            del st.session_state.selected_book
+            st.rerun()
+
+    # 하단 버튼
+    st.divider()
+    col1, col2 = st.columns(2)
+
+    with col1:
+        if st.button("🔄 설문 다시하기", use_container_width=True):
+            st.session_state.step = 1
+            if "selected_book" in st.session_state:
+                del st.session_state.selected_book
+            st.rerun()
+
+    with col2:
+        if st.button("💾 추천 결과 저장", use_container_width=True):
+            # TODO: 추천 결과 저장 기능
+            st.success("저장되었습니다!")

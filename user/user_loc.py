@@ -1,8 +1,9 @@
 import streamlit as st
 from streamlit_geolocation import streamlit_geolocation
 import requests
-from user import data
+from config import KAKAO_REST_API_KEY
 
+print("CONFIG KEY:", repr(KAKAO_REST_API_KEY))
 # 방법 1: streamlit-geolocation 라이브러리 사용 (안정적!)
 def get_user_location():
     """streamlit-geolocation을 사용하여 사용자 위치 받기"""
@@ -27,10 +28,11 @@ def get_address_name(lat, lon, api_key):
 
     docs = res.json().get("documents", [])
     for doc in docs:
-        if doc["region_type"] == "H":
-            return doc["address_name"]
+        if doc.get("region_type") == "H":
+            return doc.get("address_name")
 
     return None
+
 
 # 방법 2: IP 기반 위치 (가장 안정적!)
 def get_location_from_ip():
@@ -95,8 +97,10 @@ def getLocation():
         st.session_state.user_location = location_data
         st.session_state.user_location['method'] = 'javascript'
 
+
+        print("CONFIG KEY:", repr(KAKAO_REST_API_KEY))
         with st.spinner("주소 변환 중..."):
-            address_data = get_address_name(location_data['latitude'], location_data['longitude'], data.rest_api)
+            address_data = get_address_name(location_data['latitude'], location_data['longitude'], KAKAO_REST_API_KEY)
 
         if address_data:
             print("✅ 주소 변환 완료!")
@@ -156,7 +160,9 @@ if 'user_location' in st.session_state:
 
     if st.button("🔄 주소로 변환"):
         with st.spinner("주소 변환 중..."):
-            address_data = get_address_name(loc['latitude'], loc['longitude'], data.rest_api)
+
+
+            address_data = get_address_name(loc['latitude'], loc['longitude'], KAKAO_REST_API_KEY)
 
         if address_data:
             st.success("✅ 주소 변환 완료!")

@@ -8,5 +8,6 @@ pip install networkx
 pip install folium
 pip install streamlit-folium
 pip install pandas
+pip install python-dotenv
 
 start: streamlit run app.py
