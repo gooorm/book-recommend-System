@@ -17,19 +17,73 @@ st.title("가장 가까운 도서관")
 # 사이드바 - 입력
 st.sidebar.header("📍 좌표 입력")
 
-# 기본 좌표값 (과제에서 제공된 좌표)
-# start_lat = st.sidebar.number_input("출발지 위도", value=37.3253, format="%.6f")
-# start_lon = st.sidebar.number_input("출발지 경도", value=126.8178, format="%.6f")
-# end_lat = st.sidebar.number_input("도착지 위도", value=37.361570, format="%.6f")
-# end_lon = st.sidebar.number_input("도착지 경도", value=126.928288, format="%.6f")
-if "user" not in st.session_state.user:
-    st.session_state.user["lat"] = 37.3253
-if "user" not in st.session_state.user:
-    st.session_state.user["lon"] = 126.8178
-start_lat = st.session_state.user["lat"]
-start_lon = st.session_state.user["lon"]
-end_lat = float(st.session_state.user["library"][0][0]["library"]["latitude"])
-end_lon = float(st.session_state.user["library"][0][0]["library"]["longitude"])
+# ✅ 세션 상태 초기화 및 값 가져오기
+try:
+    # user 딕셔너리 존재 확인
+    if "user" not in st.session_state:
+        st.session_state.user = {}
+
+    # 출발지 좌표 (기본값 설정)
+    if "lat" not in st.session_state.user:
+        st.session_state.user["lat"] = 37.3253
+    if "lng" not in st.session_state.user:  # ✅ lng로 통일
+        st.session_state.user["lng"] = 126.8178
+
+    start_lat = st.session_state.user["lat"]
+    start_lon = st.session_state.user["lng"]  # ✅ lng 사용
+
+    # 도착지 좌표 (도서관)
+    if "library" in st.session_state.user and st.session_state.user["library"]:
+        # ✅ library는 (list, error) 튜플 형태
+        library_data = st.session_state.user["library"]
+
+        if isinstance(library_data, tuple) and library_data[0]:
+            # ✅ 첫 번째 도서관 정보 가져오기
+            nearest_library = library_data[0][0]["library"]
+            end_lat = float(nearest_library["latitude"])
+            end_lon = float(nearest_library["longitude"])
+            library_name = nearest_library.get("libName", "도서관")
+        else:
+            # 도서관 정보 없음 (기본값)
+            end_lat = 37.361570
+            end_lon = 126.928288
+            library_name = "기본 도서관"
+    else:
+        # 도서관 정보 없음 (기본값)
+        end_lat = 37.361570
+        end_lon = 126.928288
+        library_name = "기본 도서관"
+
+except Exception as e:
+    st.error(f"⚠️ 세션 데이터 로드 실패: {e}")
+    # 기본값으로 설정
+    start_lat = 37.3253
+    start_lon = 126.8178
+    end_lat = 37.361570
+    end_lon = 126.928288
+    library_name = "기본 도서관"
+
+# 📍 현재 좌표 정보 표시
+st.sidebar.markdown("### 📍 현재 경로")
+st.sidebar.info(f"""
+**출발지**  
+위도: {start_lat:.6f}  
+경도: {start_lon:.6f}
+
+**도착지 ({library_name})**  
+위도: {end_lat:.6f}  
+경도: {end_lon:.6f}
+""")
+
+# 🔍 디버깅 정보 (개발 중에만 사용)
+with st.sidebar.expander("🔧 디버그 정보"):
+    st.json({
+        "user_keys": list(st.session_state.user.keys()) if "user" in st.session_state else [],
+        "start": f"({start_lat}, {start_lon})",
+        "end": f"({end_lat}, {end_lon})",
+        "library_exists": "library" in st.session_state.user,
+        "selected_book": st.session_state.get("selected_book", "None")
+    })
 
 # 알고리즘 선택
 algorithm = st.sidebar.selectbox("알고리즘 선택", ["A* (A-Star)", "Dijkstra", "둘 다 비교"])
@@ -169,7 +223,7 @@ if st.button("🔍 경로 찾기", type="primary"):
 
         folium.Marker(
             [end_lat, end_lon],
-            popup="도착지",
+            popup=f"도착지 ({library_name})",
             icon=folium.Icon(color='red', icon='stop')
         ).add_to(m)
 
@@ -242,13 +296,26 @@ if st.button("🔍 경로 찾기", type="primary"):
             st.dataframe(df, use_container_width=True)
 
             # 성능 비교
+            # 성능 비교
             if len(results) == 2:
                 st.markdown("### 🔥 성능 개선")
-                speedup = (results[1]["계산시간 (ms)"] / results[0]["계산시간 (ms)"])
-                node_reduction = (1 - results[0]["탐색 노드"] / results[1]["탐색 노드"]) * 100
 
-                st.metric("계산 속도", f"{speedup:.1f}배 빠름", delta="A* 승리")
-                st.metric("노드 탐색", f"{node_reduction:.1f}% 감소", delta="A* 효율적")
+                # ✅ A*와 Dijkstra 구분
+                astar_result = next((r for r in results if r["알고리즘"] == "A*"), None)
+                dijkstra_result = next((r for r in results if r["알고리즘"] == "Dijkstra"), None)
+
+                if astar_result and dijkstra_result:
+                    # ✅ 올바른 비교: Dijkstra / A*
+                    speedup = dijkstra_result["계산시간 (ms)"] / astar_result["계산시간 (ms)"]
+                    node_reduction = (1 - astar_result["탐색 노드"] / dijkstra_result["탐색 노드"]) * 100
+
+                    # ✅ 실제로 A*가 빠른지 확인
+                    if speedup > 1:
+                        st.metric("계산 속도", f"{speedup:.2f}배 빠름", delta="A* 승리 🎉")
+                        st.metric("노드 탐색", f"{node_reduction:.1f}% 감소", delta="A* 효율적 ⚡")
+                    else:
+                        st.metric("계산 속도", f"{1 / speedup:.2f}배 느림", delta="Dijkstra 승리", delta_color="inverse")
+                        st.metric("노드 탐색", f"{node_reduction:.1f}% 감소", delta="A*가 더 적게 탐색")
 
             # 상세 정보
             st.markdown("### 📝 상세 정보")
@@ -260,6 +327,11 @@ if st.button("🔍 경로 찾기", type="primary"):
                     st.write(f"**알고리즘 실행시간**: {result['계산시간 (ms)']}ms")
                     st.write(f"**탐색한 노드 수**: {result['탐색 노드']}개")
 
+# 뒤로가기 버튼
+st.divider()
+if st.button("⬅️ 도서 목록으로 돌아가기", use_container_width=True):
+    st.switch_page("app.py")
+
 # 사이드바 하단 - 정보
 st.sidebar.markdown("---")
 st.sidebar.markdown("### 📚 프로젝트 정보")
@@ -269,56 +341,3 @@ st.sidebar.info("""
 **언어**: Python  
 **라이브러리**: osmnx, networkx, folium
 """)
-#
-# # 메인 설명
-# with st.expander("ℹ️ 프로젝트 설명"):
-#     st.markdown("""
-#     ## 보행자 최단 경로 찾기 시스템
-#
-#     ### 📌 문제 정의
-#     - 실제 도로 네트워크를 기반으로 두 지점 간 보행자 최단 경로 찾기
-#     - 다양한 알고리즘의 성능 비교 및 분석
-#
-#     ### 📊 사용 데이터
-#     - **OpenStreetMap (OSM)**: 전 세계 오픈소스 지도 데이터
-#     - 도로, 보행로, 건물 등의 실제 지리 정보
-#     - `osmnx` 라이브러리를 통한 데이터 다운로드
-#
-#     ### 🧮 구현 알고리즘
-#
-#     #### 1. A* (A-Star) 알고리즘
-#     - **개념**: f(n) = g(n) + h(n)
-#         - g(n): 시작점부터 현재까지의 실제 비용
-#         - h(n): 현재부터 목표까지의 예상 비용 (휴리스틱)
-#     - **휴리스틱**: Great Circle Distance (구면 거리)
-#     - **장점**: 목표 지향적 탐색으로 빠른 속도
-#
-#     #### 2. Dijkstra 알고리즘
-#     - **개념**: 시작점부터 모든 노드까지의 최단 거리 계산
-#     - **특징**: 휴리스틱 없이 모든 방향 균등 탐색
-#     - **장점**: 확실한 최단 경로 보장
-#     - **단점**: A*보다 느림
-#
-#     ### ⚡ 성능 분석
-#     - **시간 복잡도**: O((V + E) log V)
-#     - **공간 복잡도**: O(V)
-#     - **실제 측정**: 계산 시간, 탐색 노드 수 비교
-#
-#     ### 🎯 기대 효과
-#     - 실제 보행자 내비게이션 시스템 구현 가능
-#     - 알고리즘 성능 비교를 통한 최적 선택
-#     - 교통약자를 위한 맞춤형 경로 안내 확장 가능
-#     """)
-#
-# with st.expander("🛠️ 사용 방법"):
-#     st.markdown("""
-#     1. **좌표 입력**: 왼쪽 사이드바에서 출발지/도착지 위경도 입력
-#     2. **알고리즘 선택**: A*, Dijkstra, 또는 둘 다 선택
-#     3. **보행 속도 설정**: 개인의 보행 속도 조정 (기본 4.5km/h)
-#     4. **경로 찾기**: 버튼 클릭으로 실행
-#     5. **결과 확인**: 지도에서 경로 확인 및 성능 비교
-#
-#     **💡 팁**:
-#     - "둘 다 비교"를 선택하면 두 알고리즘의 성능 차이를 명확히 볼 수 있습니다!
-#     - 파란색 선은 A* 경로, 빨간색 선은 Dijkstra 경로입니다.
-#     """)

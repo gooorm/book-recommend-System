@@ -76,7 +76,17 @@ def get_popular_books(user_prefs):
         response.raise_for_status()
 
         # JSON 파싱
-        data = response.json()
+        if response.status_code != 200:
+            st.error(f"API 오류: {response.status_code}")
+            st.text(response.text)
+            return
+
+        try:
+            data = response.json()
+        except ValueError:
+            st.error("JSON 파싱 실패")
+            st.text(response.text)
+            return
 
         # 응답 데이터 확인
         if "response" in data and "docs" in data["response"]:
